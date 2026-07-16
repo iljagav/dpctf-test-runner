@@ -18,6 +18,7 @@ from .testing.tests_manager import TestsManager
 from .testing.devices_manager import DevicesManager
 from .testing.test_loader import TestLoader
 from .testing.event_dispatcher import EventDispatcher
+from .strapi_integration import StrapiSessionUpsertClient
 
 VERSION_STRING = "v3.0.2"
 DPCTF_VERSION_STRING = "v0.4.3"
@@ -50,6 +51,7 @@ class WaveServer(object):
         tests_manager = TestsManager()
         devices_manager = DevicesManager()
         test_loader = TestLoader()
+        strapi_integration = StrapiSessionUpsertClient(configuration.get("strapi"))
 
         sessions_manager.initialize(
             test_loader=test_loader,
@@ -57,7 +59,8 @@ class WaveServer(object):
             tests_manager=tests_manager,
             results_directory=configuration["results_directory_path"],
             results_manager=results_manager,
-            configuration=configuration
+            configuration=configuration,
+            strapi_integration=strapi_integration
         )
 
         results_manager.initialize(

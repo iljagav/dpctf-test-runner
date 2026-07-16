@@ -9,6 +9,23 @@ from tools.wpt import wpt
 DEFAULT_CONFIGURATION_FILE_PATH = os.path.join(wpt.localpaths.repo_root, "./tools/wave/config.default.json")
 
 
+def parse_bool(value, default=False):
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in ["1", "true", "yes", "on"]
+    return bool(value)
+
+
+def parse_int(value, default=0):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def load(configuration_file_path):
     configuration = {}
     if configuration_file_path:
@@ -93,6 +110,40 @@ def load(configuration_file_path):
     configuration["tests_base_url"] = configuration.get(
         "wave", default_configuration["wave"]).get(
         "tests_base_url", default_configuration["wave"]["tests_base_url"])
+
+    default_wave_configuration = default_configuration.get("wave", {})
+    configured_wave = configuration.get("wave", {})
+    default_strapi = default_wave_configuration.get("strapi", {})
+    configured_strapi = configured_wave.get("strapi", {})
+
+    strapi_enabled = parse_bool(
+        os.environ.get("STRAPI_ENABLED"),
+        configured_strapi.get("enabled", default_strapi.get("enabled", False))
+    )
+    strapi_base_url = os.environ.get(
+        "STRAPI_BASE_URL",
+        configured_strapi.get("base_url", default_strapi.get("base_url", ""))
+    )
+    strapi_upsert_path = os.environ.get(
+        "STRAPI_UPSERT_PATH",
+        configured_strapi.get("upsert_path", default_strapi.get("upsert_path", "/api/test-sessions/upsert"))
+    )
+    strapi_api_token = os.environ.get(
+        "STRAPI_API_TOKEN",
+        configured_strapi.get("api_token", default_strapi.get("api_token", ""))
+    )
+    strapi_timeout_ms = parse_int(
+        os.environ.get("STRAPI_TIMEOUT_MS"),
+        configured_strapi.get("timeout_ms", default_strapi.get("timeout_ms", 2000))
+    )
+
+    configuration["strapi"] = {
+        "enabled": strapi_enabled,
+        "base_url": strapi_base_url,
+        "upsert_path": strapi_upsert_path,
+        "api_token": strapi_api_token,
+        "timeout_ms": strapi_timeout_ms,
+    }
 
     return configuration
 

@@ -46,6 +46,13 @@
     "pre_test_delay": 5,
     "execution_mode": "auto",
     "enable_test_type_selection": false,
-    "tests_base_url": "https://github.com/cta-wave/dpctf-tests/tree/master/generated"
+    "tests_base_url": "https://github.com/cta-wave/dpctf-tests/tree/master/generated",
+    "strapi": {
+      "enabled": false,
+      "base_url": "http://localhost:1337",
+      "upsert_path": "/api/test-sessions/upsert",
+      "api_token": "",
+      "timeout_ms": 2000
+    }
   }
 }

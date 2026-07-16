@@ -30,7 +30,8 @@ class SessionsManager(object):
                    tests_manager,
                    results_directory,
                    results_manager,
-                   configuration):
+                   configuration,
+                   strapi_integration=None):
         self._test_loader = test_loader
         self._sessions = {}
         self._expiration_timeout = None
@@ -39,6 +40,7 @@ class SessionsManager(object):
         self._results_directory = results_directory
         self._results_manager = results_manager
         self._configuration = configuration
+        self._strapi_integration = strapi_integration
 
     def create_session(
         self,
@@ -121,6 +123,7 @@ class SessionsManager(object):
         )
 
         self._push_to_cache(session)
+        self._sync_session_to_strapi(session)
         if expiration_date is not None:
             self._set_expiration_timer()
 
@@ -246,6 +249,7 @@ class SessionsManager(object):
             return
         session.labels = labels
         self._push_to_cache(session)
+        self._sync_session_to_strapi(session)
 
     def delete_session(self, token):
         session = self.read_session(token)
@@ -371,6 +375,7 @@ class SessionsManager(object):
 
         session.status = RUNNING
         self.update_session(session)
+        self._sync_session_to_strapi(session)
 
         self._event_dispatcher.dispatch_event(
             token,
@@ -384,6 +389,7 @@ class SessionsManager(object):
             return
         session.status = PAUSED
         self.update_session(session)
+        self._sync_session_to_strapi(session)
         self._event_dispatcher.dispatch_event(
             token,
             event_type=STATUS_EVENT,
@@ -398,6 +404,7 @@ class SessionsManager(object):
         session.status = ABORTED
         session.date_finished = int(time.time() * 1000)
         self.update_session(session)
+        self._sync_session_to_strapi(session)
         self._event_dispatcher.dispatch_event(
             token,
             event_type=STATUS_EVENT,
@@ -422,11 +429,17 @@ class SessionsManager(object):
         session.status = COMPLETED
         session.date_finished = int(time.time() * 1000)
         self.update_session(session)
+        self._sync_session_to_strapi(session)
         self._event_dispatcher.dispatch_event(
             token,
             event_type=STATUS_EVENT,
             data=session.status
         )
+
+    def _sync_session_to_strapi(self, session):
+        if self._strapi_integration is None:
+            return
+        self._strapi_integration.upsert_session(session)
 
     def test_in_session(self, test, session):
         return self._test_list_contains_test(test, session.pending_tests) \
