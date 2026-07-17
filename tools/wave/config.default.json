@@ -51,6 +51,7 @@
       "enabled": false,
       "base_url": "http://localhost:1337",
       "upsert_path": "/api/test-sessions/upsert",
+      "device_upsert_path": "/api/devices/upsert",
       "api_token": "",
       "timeout_ms": 2000
     }

@@ -128,6 +128,10 @@ def load(configuration_file_path):
         "STRAPI_UPSERT_PATH",
         configured_strapi.get("upsert_path", default_strapi.get("upsert_path", "/api/test-sessions/upsert"))
     )
+    strapi_device_upsert_path = os.environ.get(
+        "STRAPI_DEVICE_UPSERT_PATH",
+        configured_strapi.get("device_upsert_path", default_strapi.get("device_upsert_path", "/api/devices/upsert"))
+    )
     strapi_api_token = os.environ.get(
         "STRAPI_API_TOKEN",
         configured_strapi.get("api_token", default_strapi.get("api_token", ""))
@@ -141,6 +145,7 @@ def load(configuration_file_path):
         "enabled": strapi_enabled,
         "base_url": strapi_base_url,
         "upsert_path": strapi_upsert_path,
+        "device_upsert_path": strapi_device_upsert_path,
         "api_token": strapi_api_token,
         "timeout_ms": strapi_timeout_ms,
     }

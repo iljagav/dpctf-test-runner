@@ -369,13 +369,16 @@ class SessionsManager(object):
         if session.status != PENDING and session.status != PAUSED:
             return
 
-        if session.status == PENDING:
+        is_new_start = session.status == PENDING
+        if is_new_start:
             session.date_started = int(time.time() * 1000)
             session.expiration_date = None
 
         session.status = RUNNING
         self.update_session(session)
         self._sync_session_to_strapi(session)
+        if is_new_start:
+            self._sync_device_to_strapi(session)
 
         self._event_dispatcher.dispatch_event(
             token,
@@ -440,6 +443,11 @@ class SessionsManager(object):
         if self._strapi_integration is None:
             return
         self._strapi_integration.upsert_session(session)
+
+    def _sync_device_to_strapi(self, session):
+        if self._strapi_integration is None:
+            return
+        self._strapi_integration.upsert_device_metadata(session)
 
     def test_in_session(self, test, session):
         return self._test_list_contains_test(test, session.pending_tests) \
