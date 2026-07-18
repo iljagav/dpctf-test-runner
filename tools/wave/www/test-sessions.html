@@ -21,7 +21,9 @@
   <body>
     <section class="section">
       <div class="container" style="margin-bottom: 2em">
-        <img src="res/wavelogo_2016.jpg" class="site-logo" alt="WAVE" />
+        <a href="index.html">
+          <img src="res/wavelogo_2016.jpg" class="site-logo" alt="WAVE" />
+        </a>
         <h1 class="title">Test Sessions</h1>
       </div>
 
@@ -34,6 +36,7 @@
           sessions: [],
           loading: true,
           error: null,
+          selectedTokens: {},
         };
 
         function formatDate(value) {
@@ -116,6 +119,12 @@
           const container = document.getElementById("table-container");
           if (renderStatus(container)) return;
 
+          const allSelected =
+            state.sessions.length > 0 &&
+            state.sessions.every(function(session) {
+              return !!state.selectedTokens[session.token];
+            });
+
           const rows = state.sessions
             .map(function(session) {
               const hasDeviceId =
@@ -131,8 +140,17 @@
                   "</a>"
                 : "-";
 
+              const isSelected = !!state.selectedTokens[session.token];
+
               return (
                 "<tr>" +
+                '<td class="is-narrow has-text-centered">' +
+                '<input type="checkbox" class="session-select" data-token="' +
+                escapeHtml(session.token) +
+                '"' +
+                (isSelected ? " checked" : "") +
+                " />" +
+                "</td>" +
                 '<td class="is-family-monospace">' +
                 '<a href="' +
                 escapeHtml(sessionResultsUrl(session.token)) +
@@ -176,6 +194,11 @@
             '<table class="table is-bordered is-hoverable is-fullwidth">' +
             "<thead>" +
             "<tr>" +
+            '<th class="is-narrow has-text-centered">' +
+            '<input type="checkbox" id="select-all-sessions"' +
+            (allSelected ? " checked" : "") +
+            " />" +
+            "</th>" +
             '<th class="is-narrow">Token</th>' +
             '<th class="is-narrow">#Device</th>' +
             "<th>User Agent</th>" +
@@ -197,6 +220,28 @@
               button.addEventListener("click", function() {
                 const token = button.getAttribute("data-token");
                 handleDelete(token);
+              });
+            });
+
+          const selectAll = container.querySelector("#select-all-sessions");
+          if (selectAll) {
+            selectAll.addEventListener("change", function() {
+              const checked = !!selectAll.checked;
+              state.sessions.forEach(function(session) {
+                state.selectedTokens[session.token] = checked;
+              });
+              renderTable();
+            });
+          }
+
+          Array.prototype.slice
+            .call(container.querySelectorAll("input.session-select[data-token]"))
+            .forEach(function(checkbox) {
+              checkbox.addEventListener("change", function() {
+                const token = checkbox.getAttribute("data-token");
+                if (!token) return;
+                state.selectedTokens[token] = !!checkbox.checked;
+                renderTable();
               });
             });
         }
