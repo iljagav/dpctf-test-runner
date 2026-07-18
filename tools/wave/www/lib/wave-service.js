@@ -290,6 +290,47 @@ var WaveService = {
     );
   },
 
+  readTestSessions: function (onSuccess, onError) {
+    sendRequest(
+      "GET",
+      "api/test-sessions",
+      null,
+      null,
+      function (response) {
+        var jsonObject = JSON.parse(response);
+        onSuccess(jsonObject || []);
+      },
+      onError
+    );
+  },
+
+  deleteTestSession: function (token, onSuccess, onError) {
+    sendRequest(
+      "DELETE",
+      "api/test-sessions/" + encodeURIComponent(token),
+      null,
+      null,
+      function () {
+        if (onSuccess) onSuccess();
+      },
+      onError
+    );
+  },
+
+  readDevices: function (onSuccess, onError) {
+    sendRequest(
+      "GET",
+      "api/devices-overview",
+      null,
+      null,
+      function (response) {
+        var jsonObject = JSON.parse(response);
+        onSuccess(jsonObject || []);
+      },
+      onError
+    );
+  },
+
   // TESTS API
   readTestList: function (onSuccess, onError) {
     sendRequest(

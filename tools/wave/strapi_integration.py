@@ -6,8 +6,10 @@ import logging
 try:
     from urllib.request import Request, urlopen
     from urllib.error import HTTPError, URLError
+    from urllib.parse import urlencode
 except ImportError:
     from urllib2 import Request, urlopen, HTTPError, URLError
+    from urllib import urlencode
 
 from .utils.serializer import millis_to_iso
 
@@ -19,6 +21,12 @@ class StrapiSessionUpsertClient(object):
         self._enabled = bool(configuration.get("enabled", False))
         self._base_url = configuration.get("base_url", "")
         self._upsert_path = configuration.get("upsert_path", "/api/test-sessions/upsert")
+        self._overview_path = configuration.get("overview_path", "/api/test-sessions-overview")
+        self._delete_by_token_path_template = configuration.get(
+            "delete_by_token_path_template",
+            "/api/test-sessions/by-token/{token}"
+        )
+        self._device_overview_path = configuration.get("device_overview_path", "/api/devices-overview")
         self._device_upsert_path = configuration.get("device_upsert_path", "/api/devices/upsert")
         self._api_token = configuration.get("api_token", "")
         self._timeout_ms = configuration.get("timeout_ms", 2000)
@@ -136,7 +144,298 @@ class StrapiSessionUpsertClient(object):
             "user_agent": session.user_agent,
             "session_status": session.status,
             "date_started": millis_to_iso(session.date_started),
+            "test_files": self._calculate_test_files(session),
         }
+
+    def _calculate_test_files(self, session):
+        if session is None:
+            return 0
+        test_state = getattr(session, "test_state", None)
+        if not isinstance(test_state, dict):
+            return 0
+
+        test_files = 0
+        for api in test_state:
+            api_state = test_state.get(api) or {}
+            total = api_state.get("total", 0)
+            try:
+                test_files += int(total)
+            except (TypeError, ValueError):
+                continue
+        return test_files
+
+    def list_test_sessions(self):
+        if not self._enabled:
+            return []
+        if not self._base_url:
+            self._logger.warning("Strapi list skipped: base_url is empty")
+            return []
+
+        request_url = "{}/{}".format(
+            self._base_url.rstrip("/"),
+            self._overview_path.lstrip("/")
+        )
+
+        headers = {
+            "Accept": "application/json",
+        }
+        if self._api_token:
+            headers["Authorization"] = "Bearer {}".format(self._api_token)
+
+        timeout = float(self._timeout_ms) / 1000.0
+        request = Request(request_url, headers=headers)
+        request.get_method = lambda: "GET"
+
+        try:
+            response = urlopen(request, timeout=timeout)
+            raw_data = response.read()
+            if not raw_data:
+                return []
+            json_data = json.loads(raw_data.decode("utf-8"))
+            if isinstance(json_data, list):
+                data = json_data
+            else:
+                data = json_data.get("data", [])
+            sessions_by_token = {}
+            for item in data:
+                attributes = item.get("attributes", item)
+                token = attributes.get("token")
+                if not token:
+                    continue
+                session = {
+                    "token": token,
+                    "user_agent": attributes.get("user_agent") or "",
+                    "session_status": attributes.get("session_status") or "",
+                    "date_started": attributes.get("date_started"),
+                    "test_files": attributes.get("test_files", 0),
+                }
+                existing_session = sessions_by_token.get(token)
+                if existing_session is None or self._is_preferred_test_session(session, existing_session):
+                    sessions_by_token[token] = session
+
+            sessions = list(sessions_by_token.values())
+            device_id_by_session_token, device_id_by_user_agent = self._build_device_lookup_maps()
+            for session in sessions:
+                token = session.get("token")
+                user_agent = session.get("user_agent") or ""
+                device_id = device_id_by_session_token.get(token)
+                if device_id is None and user_agent:
+                    device_id = device_id_by_user_agent.get(user_agent)
+                session["device_id"] = device_id if device_id is not None else ""
+            sessions.sort(
+                key=lambda session: session.get("date_started") or "",
+                reverse=True
+            )
+            return sessions
+        except HTTPError as error:
+            self._logger.warning("Strapi list failed with status %s", error.code)
+            return []
+        except URLError as error:
+            self._logger.warning("Strapi list failed: %s", str(error))
+            return []
+        except Exception as error:
+            self._logger.warning("Unexpected Strapi list failure: %s", str(error))
+            return []
+
+    def _is_preferred_test_session(self, candidate, existing):
+        candidate_date_started = candidate.get("date_started")
+        existing_date_started = existing.get("date_started")
+        if candidate_date_started and not existing_date_started:
+            return True
+        if existing_date_started and not candidate_date_started:
+            return False
+
+        candidate_status = candidate.get("session_status") or ""
+        existing_status = existing.get("session_status") or ""
+        if candidate_status != "pending" and existing_status == "pending":
+            return True
+        if existing_status != "pending" and candidate_status == "pending":
+            return False
+
+        if candidate_date_started and existing_date_started:
+            return candidate_date_started > existing_date_started
+
+        return False
+
+    def delete_test_session_by_token(self, token):
+        if not self._enabled:
+            return False
+        if not self._base_url:
+            self._logger.warning("Strapi delete skipped: base_url is empty")
+            return False
+        if not token:
+            return False
+
+        headers = {
+            "Accept": "application/json",
+        }
+        if self._api_token:
+            headers["Authorization"] = "Bearer {}".format(self._api_token)
+
+        timeout = float(self._timeout_ms) / 1000.0
+        delete_path = self._delete_by_token_path_template.format(token=token)
+        delete_url = "{}/{}".format(
+            self._base_url.rstrip("/"),
+            delete_path.lstrip("/")
+        )
+        delete_request = Request(delete_url, headers=headers)
+        delete_request.get_method = lambda: "DELETE"
+
+        try:
+            delete_response = urlopen(delete_request, timeout=timeout)
+            status_code = delete_response.getcode()
+            return status_code >= 200 and status_code < 300
+        except HTTPError as error:
+            self._logger.warning(
+                "Strapi delete failed with status %s for token %s",
+                error.code,
+                token
+            )
+            return False
+        except URLError as error:
+            self._logger.warning(
+                "Strapi delete failed for token %s: %s",
+                token,
+                str(error)
+            )
+            return False
+        except Exception as error:
+            self._logger.warning(
+                "Unexpected Strapi delete failure for token %s: %s",
+                token,
+                str(error)
+            )
+            return False
+
+    def list_devices(self):
+        if not self._enabled:
+            return []
+        if not self._base_url:
+            self._logger.warning("Strapi devices list skipped: base_url is empty")
+            return []
+
+        request_url = "{}/{}".format(
+            self._base_url.rstrip("/"),
+            self._device_overview_path.lstrip("/")
+        )
+
+        headers = {
+            "Accept": "application/json",
+        }
+        if self._api_token:
+            headers["Authorization"] = "Bearer {}".format(self._api_token)
+
+        timeout = float(self._timeout_ms) / 1000.0
+        request = Request(request_url, headers=headers)
+        request.get_method = lambda: "GET"
+
+        try:
+            response = urlopen(request, timeout=timeout)
+            raw_data = response.read()
+            if not raw_data:
+                return []
+            json_data = json.loads(raw_data.decode("utf-8"))
+            if isinstance(json_data, list):
+                data = json_data
+            else:
+                data = json_data.get("data", [])
+
+            devices = []
+            seen_devices = set()
+            for item in data:
+                attributes = item.get("attributes", item)
+                device_id = attributes.get("device_id")
+                user_agent = attributes.get("user_agent") or ""
+                hbbtv_version = attributes.get("hbbtv_version") or ""
+                if device_id is None:
+                    key = (user_agent, hbbtv_version)
+                else:
+                    key = (device_id,)
+                if key in seen_devices:
+                    continue
+                seen_devices.add(key)
+                devices.append({
+                    "device_id": device_id,
+                    "user_agent": user_agent,
+                    "hbbtv_version": hbbtv_version,
+                })
+            return devices
+        except HTTPError as error:
+            self._logger.warning("Strapi devices list failed with status %s", error.code)
+            return []
+        except URLError as error:
+            self._logger.warning("Strapi devices list failed: %s", str(error))
+            return []
+        except Exception as error:
+            self._logger.warning("Unexpected Strapi devices list failure: %s", str(error))
+            return []
+
+    def _build_device_lookup_maps(self):
+        device_id_by_session_token = {}
+        device_id_by_user_agent = {}
+
+        if not self._enabled:
+            return device_id_by_session_token, device_id_by_user_agent
+        if not self._base_url:
+            return device_id_by_session_token, device_id_by_user_agent
+
+        request_url = "{}/{}".format(
+            self._base_url.rstrip("/"),
+            self._device_overview_path.lstrip("/")
+        )
+
+        headers = {
+            "Accept": "application/json",
+        }
+        if self._api_token:
+            headers["Authorization"] = "Bearer {}".format(self._api_token)
+
+        timeout = float(self._timeout_ms) / 1000.0
+        request = Request(request_url, headers=headers)
+        request.get_method = lambda: "GET"
+
+        try:
+            response = urlopen(request, timeout=timeout)
+            raw_data = response.read()
+            if not raw_data:
+                return device_id_by_session_token, device_id_by_user_agent
+
+            json_data = json.loads(raw_data.decode("utf-8"))
+            if isinstance(json_data, list):
+                data = json_data
+            else:
+                data = json_data.get("data", [])
+
+            for item in data:
+                attributes = item.get("attributes", item)
+                device_id = attributes.get("device_id")
+                user_agent = attributes.get("user_agent") or ""
+                if user_agent and device_id is not None and user_agent not in device_id_by_user_agent:
+                    device_id_by_user_agent[user_agent] = device_id
+
+                token_values = self._extract_token_list(attributes.get("token"))
+                for token in token_values:
+                    if token and device_id is not None and token not in device_id_by_session_token:
+                        device_id_by_session_token[token] = device_id
+        except Exception:
+            return device_id_by_session_token, device_id_by_user_agent
+
+        return device_id_by_session_token, device_id_by_user_agent
+
+    def _extract_token_list(self, value):
+        if isinstance(value, list):
+            return [token for token in value if isinstance(token, str) and token]
+        if isinstance(value, str):
+            raw = value.strip()
+            if raw == "":
+                return []
+            try:
+                parsed = json.loads(raw)
+                if isinstance(parsed, list):
+                    return [token for token in parsed if isinstance(token, str) and token]
+            except Exception:
+                return [raw]
+        return []
 
     def _device_payload(self, session):
         user_agent = session.user_agent or ""

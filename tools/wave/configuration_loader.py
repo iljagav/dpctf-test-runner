@@ -128,6 +128,21 @@ def load(configuration_file_path):
         "STRAPI_UPSERT_PATH",
         configured_strapi.get("upsert_path", default_strapi.get("upsert_path", "/api/test-sessions/upsert"))
     )
+    strapi_overview_path = os.environ.get(
+        "STRAPI_OVERVIEW_PATH",
+        configured_strapi.get("overview_path", default_strapi.get("overview_path", "/api/test-sessions-overview"))
+    )
+    strapi_delete_by_token_path_template = os.environ.get(
+        "STRAPI_DELETE_BY_TOKEN_PATH_TEMPLATE",
+        configured_strapi.get(
+            "delete_by_token_path_template",
+            default_strapi.get("delete_by_token_path_template", "/api/test-sessions/by-token/{token}")
+        )
+    )
+    strapi_device_overview_path = os.environ.get(
+        "STRAPI_DEVICE_OVERVIEW_PATH",
+        configured_strapi.get("device_overview_path", default_strapi.get("device_overview_path", "/api/devices-overview"))
+    )
     strapi_device_upsert_path = os.environ.get(
         "STRAPI_DEVICE_UPSERT_PATH",
         configured_strapi.get("device_upsert_path", default_strapi.get("device_upsert_path", "/api/devices/upsert"))
@@ -145,6 +160,9 @@ def load(configuration_file_path):
         "enabled": strapi_enabled,
         "base_url": strapi_base_url,
         "upsert_path": strapi_upsert_path,
+        "overview_path": strapi_overview_path,
+        "delete_by_token_path_template": strapi_delete_by_token_path_template,
+        "device_overview_path": strapi_device_overview_path,
         "device_upsert_path": strapi_device_upsert_path,
         "api_token": strapi_api_token,
         "timeout_ms": strapi_timeout_ms,

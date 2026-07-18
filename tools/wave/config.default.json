@@ -48,11 +48,14 @@
     "enable_test_type_selection": false,
     "tests_base_url": "https://github.com/cta-wave/dpctf-tests/tree/master/generated",
     "strapi": {
-      "enabled": false,
+      "enabled": true,
       "base_url": "http://localhost:1337",
       "upsert_path": "/api/test-sessions/upsert",
+      "overview_path": "/api/test-sessions-overview",
+      "delete_by_token_path_template": "/api/test-sessions/by-token/{token}",
+      "device_overview_path": "/api/devices-overview",
       "device_upsert_path": "/api/devices/upsert",
-      "api_token": "",
+      "api_token": "f64c631f7a4b0f6cacd3fa2f96a7a717414b87ba0df17d0ac85a9b18c2b3a031319d46b3d841a0758dabcfc29c6d7ce33e8474fb35fd56550e0213a8a815db565260dc2605131bb084aef184d21b228f13960f84cd964a18c435aefc4fbef8934bdcc4dbbeab0fda8948567bac4aacfe91dc55ee22f65fe11e6bfe525cbb9c3b",
       "timeout_ms": 2000
     }
   }

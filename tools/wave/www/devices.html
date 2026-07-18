@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Devices - Web Platform Test</title>
+    <link rel="stylesheet" href="css/bulma-1.0.0/bulma.min.css" />
+    <link rel="stylesheet" href="css/fontawesome-6.5.2.min.css" />
+    <script src="lib/wave-service.js"></script>
+    <style>
+      .site-logo {
+        max-width: 300px;
+        margin: 0 0 30px -15px;
+      }
+
+      .status-box {
+        margin-top: 1rem;
+      }
+    </style>
+  </head>
+  <body>
+    <section class="section">
+      <div class="container" style="margin-bottom: 2em">
+        <img src="res/wavelogo_2016.jpg" class="site-logo" alt="WAVE" />
+        <h1 class="title">Devices</h1>
+      </div>
+
+      <div class="container" id="table-container"></div>
+    </section>
+
+    <script>
+      (function() {
+        const query = new URLSearchParams(window.location.search || "");
+        const filterDeviceId = query.get("device_id");
+
+        const state = {
+          devices: [],
+          loading: true,
+          error: null,
+        };
+
+        function escapeHtml(value) {
+          return String(value || "")
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/\"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+        }
+
+        function renderStatus(container) {
+          if (state.loading) {
+            container.innerHTML =
+              '<div class="level"><span class="level-item"><i class="fas fa-spinner fa-pulse"></i><span style="margin-left:0.4em;">Loading devices ...</span></span></div>';
+            return true;
+          }
+
+          if (state.error) {
+            container.innerHTML =
+              '<article class="message is-danger status-box"><div class="message-body">' +
+              escapeHtml(state.error) +
+              "</div></article>";
+            return true;
+          }
+
+          if (!state.devices || state.devices.length === 0) {
+            container.innerHTML =
+              '<div class="level"><span class="level-item">No devices available.</span></div>';
+            return true;
+          }
+
+          return false;
+        }
+
+        function renderTable() {
+          const container = document.getElementById("table-container");
+          if (renderStatus(container)) return;
+
+          const rows = state.devices
+            .map(function(device, index) {
+              const deviceNumber =
+                device.device_id !== undefined && device.device_id !== null
+                  ? device.device_id
+                  : index + 1;
+              return (
+                "<tr>" +
+                '<td class="is-narrow">' +
+                escapeHtml(deviceNumber) +
+                "</td>" +
+                "<td>-</td>" +
+                "<td>-</td>" +
+                "<td>-</td>" +
+                "<td>" +
+                escapeHtml(device.user_agent) +
+                "</td>" +
+                '<td style="white-space: nowrap">' +
+                escapeHtml(device.hbbtv_version) +
+                "</td>" +
+                "</tr>"
+              );
+            })
+            .join("");
+
+          container.innerHTML =
+            '<div style="overflow-x: auto">' +
+            '<table class="table is-bordered is-hoverable is-fullwidth">' +
+            "<thead>" +
+            "<tr>" +
+            '<th class="is-narrow">#Device</th>' +
+            '<th class="is-narrow">Manufacturer</th>' +
+            '<th class="is-narrow">Model</th>' +
+            '<th class="is-narrow">Year</th>' +
+            "<th>User Agent</th>" +
+            '<th class="is-narrow">HbbTV Version</th>' +
+            "</tr>" +
+            "</thead>" +
+            "<tbody>" +
+            rows +
+            "</tbody>" +
+            "</table>" +
+            "</div>";
+        }
+
+        function loadDevices() {
+          state.loading = true;
+          state.error = null;
+          renderTable();
+
+          WaveService.readDevices(
+            function(devices) {
+              let loadedDevices = devices || [];
+              if (filterDeviceId && String(filterDeviceId).trim() !== "") {
+                loadedDevices = loadedDevices.filter(function(device) {
+                  return String(device.device_id || "") === String(filterDeviceId);
+                });
+              }
+              state.devices = loadedDevices;
+              state.loading = false;
+              renderTable();
+            },
+            function(status) {
+              state.loading = false;
+              state.error =
+                "Failed to load devices from Strapi" +
+                (status ? " (HTTP " + status + ")" : "");
+              renderTable();
+            }
+          );
+        }
+
+        window.onload = function() {
+          loadDevices();
+        };
+      })();
+    </script>
+  </body>
+</html>

@@ -15,7 +15,8 @@ class GeneralApiHandler(ApiHandler):
         reports_enabled,
         version_string,
         dpctf_version_string,
-        test_type_selection_enabled
+        test_type_selection_enabled,
+        strapi_integration=None
     ):
         super(GeneralApiHandler, self).__init__(web_root)
         self.read_sessions_enabled = read_sessions_enabled
@@ -24,6 +25,7 @@ class GeneralApiHandler(ApiHandler):
         self.version_string = version_string
         self.dpctf_version_string = dpctf_version_string
         self.test_type_selection_enabled = test_type_selection_enabled
+        self._strapi_integration = strapi_integration
 
     def read_status(self):
         try:
@@ -42,6 +44,53 @@ class GeneralApiHandler(ApiHandler):
             self.handle_exception("Failed to read server configuration")
             return {"status": 500}
 
+    def read_test_sessions(self):
+        try:
+            if self._strapi_integration is None:
+                return {
+                    "format": "application/json",
+                    "data": []
+                }
+            sessions = self._strapi_integration.list_test_sessions()
+            return {
+                "format": "application/json",
+                "data": sessions
+            }
+        except Exception:
+            self.handle_exception("Failed to read test sessions")
+            return {"status": 500}
+
+    def delete_test_session(self, token):
+        try:
+            if self._strapi_integration is None:
+                return {"status": 404}
+            deleted = self._strapi_integration.delete_test_session_by_token(token)
+            if not deleted:
+                return {"status": 404}
+            return {
+                "format": "application/json",
+                "data": {"deleted": True}
+            }
+        except Exception:
+            self.handle_exception("Failed to delete test session")
+            return {"status": 500}
+
+    def read_devices(self):
+        try:
+            if self._strapi_integration is None:
+                return {
+                    "format": "application/json",
+                    "data": []
+                }
+            devices = self._strapi_integration.list_devices()
+            return {
+                "format": "application/json",
+                "data": devices
+            }
+        except Exception:
+            self.handle_exception("Failed to read devices")
+            return {"status": 500}
+
     def handle_request(self, request, response):
         method = request.method
         uri_parts = self.parse_uri(request)
@@ -53,6 +102,17 @@ class GeneralApiHandler(ApiHandler):
             if method == "GET":
                 if function == "status":
                     result = self.read_status()
+                if function == "test-sessions":
+                    result = self.read_test_sessions()
+                if function == "devices-overview":
+                    result = self.read_devices()
+
+        # /api/test-sessions/<token>
+        if len(uri_parts) == 3:
+            resource_name = uri_parts[1]
+            token = uri_parts[2]
+            if method == "DELETE" and resource_name == "test-sessions":
+                result = self.delete_test_session(token)
 
         if result is None:
             response.status = 404

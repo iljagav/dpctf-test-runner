@@ -133,7 +133,8 @@ class WaveServer(object):
             reports_enabled=reports_enabled,
             version_string=VERSION_STRING,
             dpctf_version_string=DPCTF_VERSION_STRING,
-            test_type_selection_enabled=configuration["enable_test_type_selection"]
+            test_type_selection_enabled=configuration["enable_test_type_selection"],
+            strapi_integration=strapi_integration
         )
 
         # Initialize HTTP server
