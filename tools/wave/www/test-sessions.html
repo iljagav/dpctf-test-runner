@@ -32,6 +32,7 @@
 
     <script>
       (function() {
+        const query = new URLSearchParams(window.location.search || "");
         const state = {
           sessions: [],
           manufacturerByDeviceId: {},
@@ -42,6 +43,8 @@
           editingToken: null,
           editingDetails: "",
           saving: false,
+          filterDeviceId: String(query.get("device_id") || "").trim(),
+          filterManufacturer: String(query.get("manufacturer") || "").trim(),
         };
 
         function formatDate(value) {
@@ -131,6 +134,7 @@
         }
 
         function renderStatus(container) {
+          const visibleSessions = getVisibleSessions();
           if (state.loading) {
             container.innerHTML =
               '<div class="level"><span class="level-item"><i class="fas fa-spinner fa-pulse"></i><span style="margin-left:0.4em;">Loading sessions ...</span></span></div>';
@@ -145,26 +149,145 @@
             return true;
           }
 
-          if (!state.sessions || state.sessions.length === 0) {
+          if (!visibleSessions || visibleSessions.length === 0) {
             container.innerHTML =
+              renderFilterControlsHtml() +
               '<div class="level"><span class="level-item">No sessions available.</span></div>';
+            bindFilterControls(container);
             return true;
           }
 
           return false;
         }
 
+        function getVisibleSessions() {
+          return state.sessions.filter(function(session) {
+            const sessionDeviceId = String(session.device_id || "").trim();
+            const manufacturer = readManufacturerForSession(session).toLowerCase();
+            const filterManufacturer = state.filterManufacturer.toLowerCase();
+
+            if (state.filterDeviceId && sessionDeviceId !== state.filterDeviceId) {
+              return false;
+            }
+
+            if (
+              filterManufacturer &&
+              manufacturer.indexOf(filterManufacturer) === -1
+            ) {
+              return false;
+            }
+
+            return true;
+          });
+        }
+
+        function renderFilterControlsHtml() {
+          return (
+            '<div class="field is-grouped" style="margin-bottom: 1rem">' +
+            '<div class="control is-expanded">' +
+            '<input class="input" id="device-filter-input" placeholder="Filter by #Device" value="' +
+            escapeHtml(state.filterDeviceId) +
+            '" />' +
+            '</div>' +
+            '<div class="control is-expanded">' +
+            '<input class="input" id="manufacturer-filter-input" placeholder="Filter by Manufacturer" value="' +
+            escapeHtml(state.filterManufacturer) +
+            '" />' +
+            '</div>' +
+            '<div class="control">' +
+            '<button class="button is-link is-light" id="apply-filters">Apply</button>' +
+            '</div>' +
+            '<div class="control">' +
+            '<button class="button is-light" id="clear-filters">Clear</button>' +
+            '</div>' +
+            '</div>'
+          );
+        }
+
+        function updateFilterUrl() {
+          const nextQuery = new URLSearchParams(window.location.search || "");
+          if (state.filterDeviceId) {
+            nextQuery.set("device_id", state.filterDeviceId);
+          } else {
+            nextQuery.delete("device_id");
+          }
+          if (state.filterManufacturer) {
+            nextQuery.set("manufacturer", state.filterManufacturer);
+          } else {
+            nextQuery.delete("manufacturer");
+          }
+          const nextUrl =
+            window.location.pathname +
+            (nextQuery.toString() ? "?" + nextQuery.toString() : "");
+          window.history.replaceState(null, "", nextUrl);
+        }
+
+        function applyFilters(deviceValue, manufacturerValue) {
+          state.filterDeviceId = String(deviceValue || "").trim();
+          state.filterManufacturer = String(manufacturerValue || "").trim();
+          updateFilterUrl();
+          renderTable();
+        }
+
+        function bindFilterControls(container) {
+          const input = container.querySelector("#device-filter-input");
+          const manufacturerInput = container.querySelector("#manufacturer-filter-input");
+          const applyButton = container.querySelector("#apply-filters");
+          const clearButton = container.querySelector("#clear-filters");
+
+          if (input) {
+            input.addEventListener("keydown", function(event) {
+              if (event.key === "Enter") {
+                applyFilters(
+                  input.value,
+                  manufacturerInput ? manufacturerInput.value : state.filterManufacturer
+                );
+              }
+            });
+          }
+
+          if (manufacturerInput) {
+            manufacturerInput.addEventListener("keydown", function(event) {
+              if (event.key === "Enter") {
+                applyFilters(
+                  input ? input.value : state.filterDeviceId,
+                  manufacturerInput.value
+                );
+              }
+            });
+          }
+
+          if (applyButton) {
+            applyButton.addEventListener("click", function() {
+              applyFilters(
+                input ? input.value : state.filterDeviceId,
+                manufacturerInput ? manufacturerInput.value : state.filterManufacturer
+              );
+            });
+          }
+
+          if (clearButton) {
+            clearButton.addEventListener("click", function() {
+              if (input) input.value = "";
+              if (manufacturerInput) manufacturerInput.value = "";
+              applyFilters("", "");
+            });
+          }
+        }
+
         function renderTable() {
           const container = document.getElementById("table-container");
           if (renderStatus(container)) return;
 
+          const visibleSessions = getVisibleSessions();
+
           const allSelected =
-            state.sessions.length > 0 &&
-            state.sessions.every(function(session) {
+            visibleSessions.length > 0 &&
+            visibleSessions.every(function(session) {
               return !!state.selectedTokens[session.token];
             });
 
-          const rows = state.sessions
+          const rows = visibleSessions
             .map(function(session) {
               const hasDeviceId =
                 session.device_id !== undefined &&
@@ -270,6 +393,7 @@
             .join("");
 
           container.innerHTML =
+            renderFilterControlsHtml() +
             '<table class="table is-bordered is-hoverable is-fullwidth">' +
             "<thead>" +
             "<tr>" +
@@ -295,6 +419,8 @@
             rows +
             "</tbody>" +
             "</table>";
+
+          bindFilterControls(container);
 
           Array.prototype.slice
             .call(container.querySelectorAll("button[data-token]"))
@@ -384,7 +510,7 @@
           if (selectAll) {
             selectAll.addEventListener("change", function() {
               const checked = !!selectAll.checked;
-              state.sessions.forEach(function(session) {
+              visibleSessions.forEach(function(session) {
                 state.selectedTokens[session.token] = checked;
               });
               renderTable();
