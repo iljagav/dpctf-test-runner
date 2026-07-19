@@ -143,6 +143,13 @@ def load(configuration_file_path):
         "STRAPI_DEVICE_OVERVIEW_PATH",
         configured_strapi.get("device_overview_path", default_strapi.get("device_overview_path", "/api/devices-overview"))
     )
+    strapi_device_update_path_template = os.environ.get(
+        "STRAPI_DEVICE_UPDATE_PATH_TEMPLATE",
+        configured_strapi.get(
+            "device_update_path_template",
+            default_strapi.get("device_update_path_template", "/api/devices/by-device-id/{device_id}")
+        )
+    )
     strapi_device_upsert_path = os.environ.get(
         "STRAPI_DEVICE_UPSERT_PATH",
         configured_strapi.get("device_upsert_path", default_strapi.get("device_upsert_path", "/api/devices/upsert"))
@@ -163,6 +170,7 @@ def load(configuration_file_path):
         "overview_path": strapi_overview_path,
         "delete_by_token_path_template": strapi_delete_by_token_path_template,
         "device_overview_path": strapi_device_overview_path,
+        "device_update_path_template": strapi_device_update_path_template,
         "device_upsert_path": strapi_device_upsert_path,
         "api_token": strapi_api_token,
         "timeout_ms": strapi_timeout_ms,

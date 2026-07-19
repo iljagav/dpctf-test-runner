@@ -27,6 +27,10 @@ class StrapiSessionUpsertClient(object):
             "/api/test-sessions/by-token/{token}"
         )
         self._device_overview_path = configuration.get("device_overview_path", "/api/devices-overview")
+        self._device_update_path_template = configuration.get(
+            "device_update_path_template",
+            "/api/devices/by-device-id/{device_id}"
+        )
         self._device_upsert_path = configuration.get("device_upsert_path", "/api/devices/upsert")
         self._api_token = configuration.get("api_token", "")
         self._timeout_ms = configuration.get("timeout_ms", 2000)
@@ -340,25 +344,39 @@ class StrapiSessionUpsertClient(object):
             else:
                 data = json_data.get("data", [])
 
-            devices = []
-            seen_devices = set()
+            devices_by_key = {}
             for item in data:
                 attributes = item.get("attributes", item)
                 device_id = attributes.get("device_id")
                 user_agent = attributes.get("user_agent") or ""
                 hbbtv_version = attributes.get("hbbtv_version") or ""
+                manufacturer = attributes.get("manufacturer") or ""
+                model = attributes.get("model") or ""
+                year = attributes.get("year")
                 if device_id is None:
                     key = (user_agent, hbbtv_version)
                 else:
                     key = (device_id,)
-                if key in seen_devices:
-                    continue
-                seen_devices.add(key)
-                devices.append({
+
+                candidate = {
                     "device_id": device_id,
+                    "manufacturer": manufacturer,
+                    "model": model,
+                    "year": year,
                     "user_agent": user_agent,
                     "hbbtv_version": hbbtv_version,
-                })
+                    "_updated_at": attributes.get("updatedAt") or attributes.get("updated_at") or "",
+                }
+
+                existing = devices_by_key.get(key)
+                if existing is None or self._is_preferred_device(candidate, existing):
+                    devices_by_key[key] = candidate
+
+            devices = []
+            for device in devices_by_key.values():
+                cleaned = dict(device)
+                cleaned.pop("_updated_at", None)
+                devices.append(cleaned)
             return devices
         except HTTPError as error:
             self._logger.warning("Strapi devices list failed with status %s", error.code)
@@ -369,6 +387,88 @@ class StrapiSessionUpsertClient(object):
         except Exception as error:
             self._logger.warning("Unexpected Strapi devices list failure: %s", str(error))
             return []
+
+    def _is_preferred_device(self, candidate, existing):
+        def _score(device):
+            populated_fields = 0
+            if (device.get("manufacturer") or "").strip() != "":
+                populated_fields += 1
+            if (device.get("model") or "").strip() != "":
+                populated_fields += 1
+            if device.get("year") is not None:
+                populated_fields += 1
+            return populated_fields
+
+        candidate_score = _score(candidate)
+        existing_score = _score(existing)
+        if candidate_score != existing_score:
+            return candidate_score > existing_score
+
+        candidate_updated = candidate.get("_updated_at") or ""
+        existing_updated = existing.get("_updated_at") or ""
+        if candidate_updated != existing_updated:
+            return candidate_updated > existing_updated
+
+        return False
+
+    def update_device(self, device_id, manufacturer=None, model=None, year=None):
+        if not self._enabled:
+            return False
+        if not self._base_url:
+            self._logger.warning("Strapi device update skipped: base_url is empty")
+            return False
+        if device_id is None:
+            return False
+
+        update_path = self._device_update_path_template.format(device_id=device_id)
+        request_url = "{}/{}".format(
+            self._base_url.rstrip("/"),
+            update_path.lstrip("/")
+        )
+
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
+        if self._api_token:
+            headers["Authorization"] = "Bearer {}".format(self._api_token)
+
+        payload = {
+            "manufacturer": manufacturer,
+            "model": model,
+            "year": year,
+        }
+
+        timeout = float(self._timeout_ms) / 1000.0
+        body = json.dumps(payload).encode("utf-8")
+        request = Request(request_url, data=body, headers=headers)
+        request.get_method = lambda: "PUT"
+
+        try:
+            response = urlopen(request, timeout=timeout)
+            status_code = response.getcode()
+            return status_code >= 200 and status_code < 300
+        except HTTPError as error:
+            self._logger.warning(
+                "Strapi device update failed with status %s for device_id %s",
+                error.code,
+                str(device_id)
+            )
+            return False
+        except URLError as error:
+            self._logger.warning(
+                "Strapi device update failed for device_id %s: %s",
+                str(device_id),
+                str(error)
+            )
+            return False
+        except Exception as error:
+            self._logger.warning(
+                "Unexpected Strapi device update failure for device_id %s: %s",
+                str(device_id),
+                str(error)
+            )
+            return False
 
     def _build_device_lookup_maps(self):
         device_id_by_session_token = {}

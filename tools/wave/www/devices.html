@@ -39,6 +39,13 @@
           devices: [],
           loading: true,
           error: null,
+          editingDeviceId: null,
+          editValues: {
+            manufacturer: "",
+            model: "",
+            year: "",
+          },
+          saving: false,
         };
 
         function escapeHtml(value) {
@@ -78,25 +85,85 @@
           const container = document.getElementById("table-container");
           if (renderStatus(container)) return;
 
+          function asDisplayText(value) {
+            if (value === undefined || value === null) return "-";
+            const text = String(value).trim();
+            return text === "" ? "-" : text;
+          }
+
           const rows = state.devices
             .map(function(device, index) {
               const deviceNumber =
                 device.device_id !== undefined && device.device_id !== null
                   ? device.device_id
                   : index + 1;
+
+              const deviceKey = String(device.device_id || "");
+              const isEditing =
+                deviceKey !== "" &&
+                state.editingDeviceId !== null &&
+                String(state.editingDeviceId) === deviceKey;
+
+              const manufacturerCell = isEditing
+                ? '<input class="input is-small device-edit-manufacturer" data-device-id="' +
+                  escapeHtml(deviceKey) +
+                  '" value="' +
+                  escapeHtml(state.editValues.manufacturer) +
+                  '" />'
+                : escapeHtml(asDisplayText(device.manufacturer));
+
+              const modelCell = isEditing
+                ? '<input class="input is-small device-edit-model" data-device-id="' +
+                  escapeHtml(deviceKey) +
+                  '" value="' +
+                  escapeHtml(state.editValues.model) +
+                  '" />'
+                : escapeHtml(asDisplayText(device.model));
+
+              const yearCell = isEditing
+                ? '<input class="input is-small device-edit-year" data-device-id="' +
+                  escapeHtml(deviceKey) +
+                  '" value="' +
+                  escapeHtml(state.editValues.year) +
+                  '" />'
+                : escapeHtml(asDisplayText(device.year));
+
+              const editButton =
+                deviceKey === ""
+                  ? "-"
+                  : isEditing
+                    ? '<button class="button is-small is-success device-save-button" data-device-id="' +
+                      escapeHtml(deviceKey) +
+                      '"' +
+                      ' aria-label="Save" title="Save"' +
+                      (state.saving ? " disabled" : "") +
+                      '><span class="icon is-small"><i class="fas fa-floppy-disk" aria-hidden="true"></i></span></button>'
+                    : '<button class="button is-small device-edit-button" data-device-id="' +
+                      escapeHtml(deviceKey) +
+                      '" aria-label="Edit" title="Edit"><span class="icon is-small"><i class="fas fa-pen" aria-hidden="true"></i></span></button>';
+
               return (
                 "<tr>" +
                 '<td class="is-narrow">' +
                 escapeHtml(deviceNumber) +
                 "</td>" +
-                "<td>-</td>" +
-                "<td>-</td>" +
-                "<td>-</td>" +
+                "<td>" +
+                manufacturerCell +
+                "</td>" +
+                "<td>" +
+                modelCell +
+                "</td>" +
+                "<td>" +
+                yearCell +
+                "</td>" +
                 "<td>" +
                 escapeHtml(device.user_agent) +
                 "</td>" +
                 '<td style="white-space: nowrap">' +
                 escapeHtml(device.hbbtv_version) +
+                "</td>" +
+                '<td class="is-narrow has-text-centered">' +
+                editButton +
                 "</td>" +
                 "</tr>"
               );
@@ -114,6 +181,7 @@
             '<th class="is-narrow">Year</th>' +
             "<th>User Agent</th>" +
             '<th class="is-narrow">HbbTV Version</th>' +
+            '<th class="is-narrow">Edit</th>' +
             "</tr>" +
             "</thead>" +
             "<tbody>" +
@@ -121,6 +189,123 @@
             "</tbody>" +
             "</table>" +
             "</div>";
+
+          Array.prototype.slice
+            .call(container.querySelectorAll("button.device-edit-button[data-device-id]"))
+            .forEach(function(button) {
+              button.addEventListener("click", function() {
+                const deviceId = button.getAttribute("data-device-id");
+                const device = state.devices.find(function(it) {
+                  return String(it.device_id || "") === String(deviceId || "");
+                });
+                if (!device) return;
+                state.editingDeviceId = deviceId;
+                state.editValues = {
+                  manufacturer: device.manufacturer || "",
+                  model: device.model || "",
+                  year:
+                    device.year !== undefined && device.year !== null
+                      ? String(device.year)
+                      : "",
+                };
+                state.error = null;
+                renderTable();
+              });
+            });
+
+          Array.prototype.slice
+            .call(container.querySelectorAll("button.device-save-button[data-device-id]"))
+            .forEach(function(button) {
+              button.addEventListener("click", function() {
+                const deviceId = button.getAttribute("data-device-id");
+                saveDeviceRow(deviceId);
+              });
+            });
+
+          Array.prototype.slice
+            .call(container.querySelectorAll("input.device-edit-manufacturer[data-device-id]"))
+            .forEach(function(input) {
+              input.addEventListener("input", function() {
+                state.editValues.manufacturer = input.value;
+              });
+            });
+
+          Array.prototype.slice
+            .call(container.querySelectorAll("input.device-edit-model[data-device-id]"))
+            .forEach(function(input) {
+              input.addEventListener("input", function() {
+                state.editValues.model = input.value;
+              });
+            });
+
+          Array.prototype.slice
+            .call(container.querySelectorAll("input.device-edit-year[data-device-id]"))
+            .forEach(function(input) {
+              input.addEventListener("input", function() {
+                state.editValues.year = input.value;
+              });
+            });
+        }
+
+        function saveDeviceRow(deviceId) {
+          if (!deviceId) return;
+
+          const manufacturer = String(state.editValues.manufacturer || "").trim();
+          const model = String(state.editValues.model || "").trim();
+          const yearText = String(state.editValues.year || "").trim();
+
+          let year = null;
+          if (yearText !== "") {
+            if (!/^\d+$/.test(yearText)) {
+              state.error = "Year must be an integer";
+              renderTable();
+              return;
+            }
+            year = parseInt(yearText, 10);
+          }
+
+          state.saving = true;
+          state.error = null;
+          renderTable();
+
+          WaveService.updateDevice(
+            deviceId,
+            {
+              manufacturer: manufacturer,
+              model: model,
+              year: year,
+            },
+            function() {
+              state.devices = state.devices.map(function(device) {
+                if (String(device.device_id || "") !== String(deviceId || "")) {
+                  return device;
+                }
+                return {
+                  device_id: device.device_id,
+                  manufacturer: manufacturer,
+                  model: model,
+                  year: year,
+                  user_agent: device.user_agent,
+                  hbbtv_version: device.hbbtv_version,
+                };
+              });
+              state.saving = false;
+              state.editingDeviceId = null;
+              state.editValues = {
+                manufacturer: "",
+                model: "",
+                year: "",
+              };
+              renderTable();
+            },
+            function(status) {
+              state.saving = false;
+              state.error =
+                "Failed to update device" +
+                (status ? " (HTTP " + status + ")" : "");
+              renderTable();
+            }
+          );
         }
 
         function loadDevices() {

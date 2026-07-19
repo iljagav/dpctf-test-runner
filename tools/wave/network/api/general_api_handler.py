@@ -1,5 +1,6 @@
 from __future__ import absolute_import
 from __future__ import unicode_literals
+import json
 
 from .api_handler import ApiHandler
 
@@ -91,6 +92,36 @@ class GeneralApiHandler(ApiHandler):
             self.handle_exception("Failed to read devices")
             return {"status": 500}
 
+    def update_device(self, device_id, body):
+        try:
+            if self._strapi_integration is None:
+                return {"status": 404}
+
+            payload = {}
+            decoded = body.decode("utf-8") if body is not None else ""
+            if decoded != "":
+                payload = json.loads(decoded)
+
+            manufacturer = payload.get("manufacturer")
+            model = payload.get("model")
+            year = payload.get("year")
+
+            updated = self._strapi_integration.update_device(
+                device_id,
+                manufacturer=manufacturer,
+                model=model,
+                year=year
+            )
+            if not updated:
+                return {"status": 404}
+            return {
+                "format": "application/json",
+                "data": {"updated": True}
+            }
+        except Exception:
+            self.handle_exception("Failed to update device")
+            return {"status": 500}
+
     def handle_request(self, request, response):
         method = request.method
         uri_parts = self.parse_uri(request)
@@ -113,6 +144,8 @@ class GeneralApiHandler(ApiHandler):
             token = uri_parts[2]
             if method == "DELETE" and resource_name == "test-sessions":
                 result = self.delete_test_session(token)
+            if method == "PUT" and resource_name == "devices-overview":
+                result = self.update_device(token, request.body)
 
         if result is None:
             response.status = 404

@@ -331,6 +331,20 @@ var WaveService = {
     );
   },
 
+  updateDevice: function (deviceId, data, onSuccess, onError) {
+    sendRequest(
+      "PUT",
+      "api/devices-overview/" + encodeURIComponent(String(deviceId || "")),
+      { "Content-Type": "application/json" },
+      JSON.stringify(data || {}),
+      function (response) {
+        var jsonObject = JSON.parse(response);
+        if (onSuccess) onSuccess(jsonObject || {});
+      },
+      onError
+    );
+  },
+
   // TESTS API
   readTestList: function (onSuccess, onError) {
     sendRequest(
