@@ -53,6 +53,7 @@
       "upsert_path": "/api/test-sessions/upsert",
       "overview_path": "/api/test-sessions-overview",
       "delete_by_token_path_template": "/api/test-sessions/by-token/{token}",
+      "details_update_by_token_path_template": "/api/test-sessions/by-token/{token}/details",
       "device_overview_path": "/api/devices-overview",
       "device_update_path_template": "/api/devices/by-device-id/{device_id}",
       "device_upsert_path": "/api/devices/upsert",

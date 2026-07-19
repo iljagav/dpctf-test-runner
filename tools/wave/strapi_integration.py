@@ -26,6 +26,10 @@ class StrapiSessionUpsertClient(object):
             "delete_by_token_path_template",
             "/api/test-sessions/by-token/{token}"
         )
+        self._details_update_by_token_path_template = configuration.get(
+            "details_update_by_token_path_template",
+            "/api/test-sessions/by-token/{token}/details"
+        )
         self._device_overview_path = configuration.get("device_overview_path", "/api/devices-overview")
         self._device_update_path_template = configuration.get(
             "device_update_path_template",
@@ -212,6 +216,7 @@ class StrapiSessionUpsertClient(object):
                     "session_status": attributes.get("session_status") or "",
                     "date_started": attributes.get("date_started"),
                     "test_files": attributes.get("test_files", 0),
+                    "details": attributes.get("details") or "",
                 }
                 existing_session = sessions_by_token.get(token)
                 if existing_session is None or self._is_preferred_test_session(session, existing_session):
@@ -306,6 +311,59 @@ class StrapiSessionUpsertClient(object):
         except Exception as error:
             self._logger.warning(
                 "Unexpected Strapi delete failure for token %s: %s",
+                token,
+                str(error)
+            )
+            return False
+
+    def update_test_session_details_by_token(self, token, details):
+        if not self._enabled:
+            return False
+        if not self._base_url:
+            self._logger.warning("Strapi details update skipped: base_url is empty")
+            return False
+        if not token:
+            return False
+
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
+        if self._api_token:
+            headers["Authorization"] = "Bearer {}".format(self._api_token)
+
+        timeout = float(self._timeout_ms) / 1000.0
+        update_path = self._details_update_by_token_path_template.format(token=token)
+        update_url = "{}/{}".format(
+            self._base_url.rstrip("/"),
+            update_path.lstrip("/")
+        )
+
+        body = json.dumps({"details": details}).encode("utf-8")
+        request = Request(update_url, data=body, headers=headers)
+        request.get_method = lambda: "PUT"
+
+        try:
+            response = urlopen(request, timeout=timeout)
+            status_code = response.getcode()
+            return status_code >= 200 and status_code < 300
+        except HTTPError as error:
+            self._logger.warning(
+                "Strapi details update failed with status %s for token %s",
+                error.code,
+                token
+            )
+            return False
+        except URLError as error:
+            self._logger.warning(
+                "Strapi details update failed for token %s: %s",
+                token,
+                str(error)
+            )
+            return False
+        except Exception as error:
+            self._logger.warning(
+                "Unexpected Strapi details update failure for token %s: %s",
                 token,
                 str(error)
             )

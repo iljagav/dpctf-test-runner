@@ -139,6 +139,16 @@ def load(configuration_file_path):
             default_strapi.get("delete_by_token_path_template", "/api/test-sessions/by-token/{token}")
         )
     )
+    strapi_details_update_by_token_path_template = os.environ.get(
+        "STRAPI_DETAILS_UPDATE_BY_TOKEN_PATH_TEMPLATE",
+        configured_strapi.get(
+            "details_update_by_token_path_template",
+            default_strapi.get(
+                "details_update_by_token_path_template",
+                "/api/test-sessions/by-token/{token}/details"
+            )
+        )
+    )
     strapi_device_overview_path = os.environ.get(
         "STRAPI_DEVICE_OVERVIEW_PATH",
         configured_strapi.get("device_overview_path", default_strapi.get("device_overview_path", "/api/devices-overview"))
@@ -169,6 +179,7 @@ def load(configuration_file_path):
         "upsert_path": strapi_upsert_path,
         "overview_path": strapi_overview_path,
         "delete_by_token_path_template": strapi_delete_by_token_path_template,
+        "details_update_by_token_path_template": strapi_details_update_by_token_path_template,
         "device_overview_path": strapi_device_overview_path,
         "device_update_path_template": strapi_device_update_path_template,
         "device_upsert_path": strapi_device_upsert_path,

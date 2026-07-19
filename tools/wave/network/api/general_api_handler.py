@@ -76,6 +76,28 @@ class GeneralApiHandler(ApiHandler):
             self.handle_exception("Failed to delete test session")
             return {"status": 500}
 
+    def update_test_session_details(self, token, body):
+        try:
+            if self._strapi_integration is None:
+                return {"status": 404}
+
+            payload = {}
+            decoded = body.decode("utf-8") if body is not None else ""
+            if decoded != "":
+                payload = json.loads(decoded)
+
+            details = payload.get("details", "")
+            updated = self._strapi_integration.update_test_session_details_by_token(token, details)
+            if not updated:
+                return {"status": 404}
+            return {
+                "format": "application/json",
+                "data": {"updated": True}
+            }
+        except Exception:
+            self.handle_exception("Failed to update test session details")
+            return {"status": 500}
+
     def read_devices(self):
         try:
             if self._strapi_integration is None:
@@ -146,6 +168,14 @@ class GeneralApiHandler(ApiHandler):
                 result = self.delete_test_session(token)
             if method == "PUT" and resource_name == "devices-overview":
                 result = self.update_device(token, request.body)
+
+        # /api/test-sessions/<token>/details
+        if len(uri_parts) == 4:
+            resource_name = uri_parts[1]
+            token = uri_parts[2]
+            action = uri_parts[3]
+            if method == "PUT" and resource_name == "test-sessions" and action == "details":
+                result = self.update_test_session_details(token, request.body)
 
         if result is None:
             response.status = 404

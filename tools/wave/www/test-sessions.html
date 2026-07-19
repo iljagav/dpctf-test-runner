@@ -34,9 +34,14 @@
       (function() {
         const state = {
           sessions: [],
+          manufacturerByDeviceId: {},
+          hbbtvByDeviceId: {},
           loading: true,
           error: null,
           selectedTokens: {},
+          editingToken: null,
+          editingDetails: "",
+          saving: false,
         };
 
         function formatDate(value) {
@@ -91,6 +96,40 @@
             .replace(/'/g, "&#039;");
         }
 
+        function readManufacturerForSession(session) {
+          const rawDeviceId = session ? session.device_id : null;
+          if (rawDeviceId === undefined || rawDeviceId === null) {
+            return "-";
+          }
+          const deviceId = String(rawDeviceId).trim();
+          if (deviceId === "") {
+            return "-";
+          }
+          const manufacturer = state.manufacturerByDeviceId[deviceId];
+          if (manufacturer === undefined || manufacturer === null) {
+            return "-";
+          }
+          const text = String(manufacturer).trim();
+          return text === "" ? "-" : text;
+        }
+
+        function readHbbtvForSession(session) {
+          const rawDeviceId = session ? session.device_id : null;
+          if (rawDeviceId === undefined || rawDeviceId === null) {
+            return "-";
+          }
+          const deviceId = String(rawDeviceId).trim();
+          if (deviceId === "") {
+            return "-";
+          }
+          const hbbtvVersion = state.hbbtvByDeviceId[deviceId];
+          if (hbbtvVersion === undefined || hbbtvVersion === null) {
+            return "-";
+          }
+          const text = String(hbbtvVersion).trim();
+          return text === "" ? "-" : text;
+        }
+
         function renderStatus(container) {
           if (state.loading) {
             container.innerHTML =
@@ -141,6 +180,31 @@
                 : "-";
 
               const isSelected = !!state.selectedTokens[session.token];
+              const isEditing =
+                state.editingToken !== null &&
+                String(state.editingToken) === String(session.token || "");
+
+              const detailsCell = isEditing
+                ? '<input class="input is-small details-edit-input" data-token="' +
+                  escapeHtml(session.token) +
+                  '" value="' +
+                  escapeHtml(state.editingDetails) +
+                  '" />'
+                : escapeHtml(
+                    String(session.details || "").trim() !== ""
+                      ? session.details
+                      : "-"
+                  );
+
+              const editButton = isEditing
+                ? '<button class="button is-small is-success session-save-button" data-token="' +
+                  escapeHtml(session.token) +
+                  '" aria-label="Save" title="Save"' +
+                  (state.saving ? " disabled" : "") +
+                  '><span class="icon is-small"><i class="fas fa-floppy-disk" aria-hidden="true"></i></span></button>'
+                : '<button class="button is-small session-edit-button" data-token="' +
+                  escapeHtml(session.token) +
+                  '" aria-label="Edit" title="Edit"><span class="icon is-small"><i class="fas fa-pen" aria-hidden="true"></i></span></button>';
 
               return (
                 "<tr>" +
@@ -159,10 +223,19 @@
                 "</a>" +
                 "</td>" +
                 '<td class="is-narrow">' +
+                escapeHtml(formatDate(session.date_started)) +
+                "</td>" +
+                '<td style="width: 8rem; max-width: 8rem; word-break: break-word">' +
+                escapeHtml(readManufacturerForSession(session)) +
+                "</td>" +
+                '<td style="width: 9rem; max-width: 9rem; word-break: break-word">' +
+                escapeHtml(readHbbtvForSession(session)) +
+                "</td>" +
+                '<td class="is-narrow">' +
                 deviceCell +
                 "</td>" +
-                "<td>" +
-                escapeHtml(session.user_agent) +
+                '<td class="is-narrow">' +
+                escapeHtml(session.test_files || 0) +
                 "</td>" +
                 '<td style="vertical-align: middle; text-align: center">' +
                 '<span class="tag ' +
@@ -171,11 +244,18 @@
                 escapeHtml(session.session_status || "unknown") +
                 "</span>" +
                 "</td>" +
-                '<td style="white-space: nowrap">' +
-                escapeHtml(formatDate(session.date_started)) +
+                "<td>" +
+                escapeHtml(
+                  Array.isArray(session.labels) && session.labels.length > 0
+                    ? session.labels.join(", ")
+                    : "-"
+                ) +
                 "</td>" +
-                '<td class="is-narrow">' +
-                escapeHtml(session.test_files || 0) +
+                '<td style="white-space: normal; word-break: break-word">' +
+                detailsCell +
+                "</td>" +
+                '<td class="is-narrow has-text-centered">' +
+                editButton +
                 "</td>" +
                 '<td class="is-narrow has-text-centered">' +
                 '<button class="button is-small is-danger is-light" data-token="' +
@@ -190,7 +270,6 @@
             .join("");
 
           container.innerHTML =
-            '<div style="overflow-x: auto">' +
             '<table class="table is-bordered is-hoverable is-fullwidth">' +
             "<thead>" +
             "<tr>" +
@@ -200,29 +279,107 @@
             " />" +
             "</th>" +
             '<th class="is-narrow">Token</th>' +
-            '<th class="is-narrow">#Device</th>' +
-            "<th>User Agent</th>" +
-            '<th class="is-narrow">Status</th>' +
             '<th class="is-narrow">Date Started</th>' +
+            '<th style="width: 8rem; max-width: 8rem">Manufacturer</th>' +
+            '<th style="width: 6rem; max-width: 6rem">HbbTV Version</th>' +
+            '<th class="is-narrow">#Device</th>' +
             '<th class="is-narrow">Test Files</th>' +
+            '<th class="is-narrow">Status</th>' +
+            '<th class="is-narrow">Labels</th>' +
+            "<th>Details</th>" +
+            '<th class="is-narrow">Edit</th>' +
             '<th class="is-narrow">Delete</th>' +
             "</tr>" +
             "</thead>" +
             "<tbody>" +
             rows +
             "</tbody>" +
-            "</table>" +
-            "</div>";
+            "</table>";
 
           Array.prototype.slice
             .call(container.querySelectorAll("button[data-token]"))
             .forEach(function(button) {
+              if (button.classList.contains("session-edit-button")) return;
+              if (button.classList.contains("session-save-button")) return;
               button.addEventListener("click", function() {
                 const token = button.getAttribute("data-token");
                 handleDelete(token);
               });
             });
 
+          Array.prototype.slice
+            .call(container.querySelectorAll("button.session-edit-button[data-token]"))
+            .forEach(function(button) {
+              button.addEventListener("click", function() {
+                const token = button.getAttribute("data-token");
+                const session = state.sessions.find(function(item) {
+                  return String(item.token || "") === String(token || "");
+                });
+                if (!session) return;
+                state.editingToken = token;
+                state.editingDetails = String(session.details || "");
+                state.error = null;
+                renderTable();
+              });
+            });
+
+          Array.prototype.slice
+            .call(container.querySelectorAll("button.session-save-button[data-token]"))
+            .forEach(function(button) {
+              button.addEventListener("click", function() {
+                const token = button.getAttribute("data-token");
+                saveDetails(token);
+              });
+            });
+
+          Array.prototype.slice
+            .call(container.querySelectorAll("input.details-edit-input[data-token]"))
+            .forEach(function(input) {
+              input.addEventListener("input", function() {
+                state.editingDetails = input.value;
+              });
+            });
+
+
+        function saveDetails(token) {
+          if (!token) return;
+          state.saving = true;
+          state.error = null;
+          renderTable();
+
+          WaveService.updateTestSessionDetails(
+            token,
+            state.editingDetails,
+            function() {
+              state.sessions = state.sessions.map(function(session) {
+                if (String(session.token || "") !== String(token || "")) {
+                  return session;
+                }
+                return {
+                  token: session.token,
+                  user_agent: session.user_agent,
+                  session_status: session.session_status,
+                  date_started: session.date_started,
+                  test_files: session.test_files,
+                  details: state.editingDetails,
+                  device_id: session.device_id,
+                  labels: session.labels,
+                };
+              });
+              state.saving = false;
+              state.editingToken = null;
+              state.editingDetails = "";
+              renderTable();
+            },
+            function(status) {
+              state.saving = false;
+              state.error =
+                "Failed to update details" +
+                (status ? " (HTTP " + status + ")" : "");
+              renderTable();
+            }
+          );
+        }
           const selectAll = container.querySelector("#select-all-sessions");
           if (selectAll) {
             selectAll.addEventListener("change", function() {
@@ -251,16 +408,57 @@
           state.error = null;
           renderTable();
 
+          let sessionsLoaded = false;
+          let devicesLoaded = false;
+
+          function finishIfDone() {
+            if (!sessionsLoaded || !devicesLoaded) {
+              return;
+            }
+            state.loading = false;
+            renderTable();
+          }
+
           WaveService.readTestSessions(
             function(sessions) {
               state.sessions = sessions || [];
-              state.loading = false;
-              renderTable();
+              sessionsLoaded = true;
+              finishIfDone();
             },
             function(status) {
               state.loading = false;
               state.error =
                 "Failed to load test sessions from Strapi" +
+                (status ? " (HTTP " + status + ")" : "");
+              renderTable();
+            }
+          );
+
+          WaveService.readDevices(
+            function(devices) {
+              const manufacturerMap = {};
+              const hbbtvMap = {};
+              (devices || []).forEach(function(device) {
+                const deviceId = String(device.device_id || "").trim();
+                if (deviceId === "") return;
+                const manufacturer = String(device.manufacturer || "").trim();
+                const hbbtvVersion = String(device.hbbtv_version || "").trim();
+                if (manufacturer !== "") {
+                  manufacturerMap[deviceId] = manufacturer;
+                }
+                if (hbbtvVersion !== "") {
+                  hbbtvMap[deviceId] = hbbtvVersion;
+                }
+              });
+              state.manufacturerByDeviceId = manufacturerMap;
+              state.hbbtvByDeviceId = hbbtvMap;
+              devicesLoaded = true;
+              finishIfDone();
+            },
+            function(status) {
+              state.loading = false;
+              state.error =
+                "Failed to load devices from Strapi" +
                 (status ? " (HTTP " + status + ")" : "");
               renderTable();
             }

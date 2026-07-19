@@ -317,6 +317,20 @@ var WaveService = {
     );
   },
 
+  updateTestSessionDetails: function (token, details, onSuccess, onError) {
+    sendRequest(
+      "PUT",
+      "api/test-sessions/" + encodeURIComponent(String(token || "")) + "/details",
+      { "Content-Type": "application/json" },
+      JSON.stringify({ details: details }),
+      function (response) {
+        var jsonObject = JSON.parse(response);
+        if (onSuccess) onSuccess(jsonObject || {});
+      },
+      onError
+    );
+  },
+
   readDevices: function (onSuccess, onError) {
     sendRequest(
       "GET",
